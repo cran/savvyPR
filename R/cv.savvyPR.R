@@ -1,0 +1,298 @@
+#' Cross-Validation for Parity Regression Model Estimation
+#'
+#' @title Cross-Validation for Parity Regression Model Estimation
+#'
+#' @description Performs k-fold cross-validation for Parity Regression (PR) models to select
+#' optimal tuning parameters. The underlying PR methodology distributes the total prediction
+#' error evenly across all parameters, ensuring stability in the presence of high multicollinearity
+#' and substantial noise (such as time series data with structural changes and evolving trends).
+#' This function supports both Budget-based and Target-based parameterizations and evaluates
+#' models across a variety of loss metrics.
+#'
+#' @param x A matrix of predictors with rows as observations and columns as variables. Must not contain \code{NA} values, and should not include an intercept column of ones.
+#' @param y A numeric vector of the response variable, should have the same number of observations as \code{x}. Must not contain \code{NA} values.
+#' @param method Character string specifying the parameterization method to use: \code{"budget"} (default) or \code{"target"}.
+#' @param vals Optional; a numeric vector of values for tuning the PR model (acts as \code{c} for budget, or \code{t} for target).
+#'             If \code{NULL}, a default sequence is generated based on the selected method. Must contain at least two values.
+#' @param nval Numeric value specifying the number of tuning values to try in the optimization process if \code{vals=NULL}. Defaults to 100.
+#' @param lambda_vals Optional; a numeric vector of \code{lambda} values used for regularization in the \code{"PR2"} and \code{"PR3"} model types.
+#'        If \code{NULL} and model_type is \code{"PR2"} or \code{"PR3"}, a default sequence is used. Must contain at least two values.
+#' @param nlambda Numeric value specifying the number of \code{lambda_val} values to try in the optimization process if \code{lambda_vals=NULL}.
+#' @param folds The number of folds to be used in the cross-validation, default is \code{10}. Must be an integer \code{>= 3}.
+#' @param model_type Character string specifying the type of model to fit. Defaults to \code{"PR3"}. Can be one of \code{"PR3"}, \code{"PR1"}, or \code{"PR2"}. See details for further clarification.
+#' @param measure_type Character vector specifying the measure to use for model evaluation. Defaults to \code{"mse"}. Supported types include \code{"mse"}, \code{"mae"}, \code{"rmse"}, and \code{"mape"}.
+#' @param foldid Logical indicating whether to return fold assignments. Defaults to \code{FALSE}.
+#' @param use_feature_selection Logical indicating whether to perform feature selection during the model fitting process. Defaults to \code{FALSE}.
+#' @param standardize Logical indicating whether to standardize predictor variables. Defaults to \code{TRUE}.
+#' @param intercept Logical indicating whether to include an intercept in the model. Defaults to \code{TRUE}.
+#' @param exclude Optional; indicate if any variables should be excluded in the model fitting process.
+#'
+#' @details
+#' This function facilitates cross-validation for parity regression models across a range
+#' of tuning values (\code{val}) and regularization values (\eqn{\lambda}), depending
+#' on the model type specified. Each model type handles the parameters differently:
+#'
+#' \describe{
+#'   \item{\strong{PR1}}{Performs cross-validation only over the \code{val} sequence while
+#'   fixing \eqn{\lambda=0}. This model type is primarily used when the focus is on
+#'   understanding how different levels of risk parity constraints impact the
+#'   model performance purely based on the parity mechanism without the influence
+#'   of ridge \eqn{\lambda} shrinkage.}
+#'
+#'   \item{\strong{PR2}}{Uses a fixed \eqn{\lambda} value determined by performing a ridge
+#'   regression (\code{lambda} optimization) using \code{\link[glmnet:cv.glmnet]{cv.glmnet}}
+#'   on the dataset. It then performs cross-validation over the \code{val} sequence
+#'   while using this optimized \eqn{\lambda} value. This approach is useful when
+#'   one wishes to maintain a stable amount of standard shrinkage while exploring
+#'   the impact of varying levels of the proportional contribution constraint.}
+#'
+#'   \item{\strong{PR3}}{First, determines an optimal \code{val} using the same method as \code{PR1}.
+#'   Then, keeping this \code{val} fixed, it conducts a cross-validation over all
+#'   possible \eqn{\lambda} values. This dual-stage optimization can be particularly
+#'   effective when the initial parity regularization needs further refinement
+#'   via \eqn{\lambda} adjustment.}
+#' }
+#'
+#' The function supports several types of loss metrics for assessing model performance:
+#' \describe{
+#'   \item{\strong{mse}}{Mean Squared Error: Measures the average of the squares of the errors—that is,
+#'   the average squared difference between the estimated values and the actual value.}
+#'   \item{\strong{mae}}{Mean Absolute Error: Measures the average magnitude of the errors in a
+#'   set of predictions, without considering their direction. It’s the average over the
+#'   test sample of the absolute differences between prediction and actual observation
+#'   where all individual differences have equal weight.}
+#'   \item{\strong{rmse}}{Root Mean Squared Error: It is the square root of the mean of the squared
+#'   errors. \code{RMSE} is a good measure of how accurately the model predicts the response,
+#'   and it is the most important criterion for fit if the main purpose of the model is prediction.}
+#'   \item{\strong{mape}}{Mean Absolute Percentage Error: Measures the size of the error in percentage
+#'   terms. It is calculated as the average of the unsigned percentage error, as shown above.
+#'   Because it is based on relative errors, it is less sensitive to large deviations in small true values.}
+#' }
+#' The choice of measure impacts how the model's performance is assessed during cross-validation. Users should
+#' select the measure that best reflects the requirements of their specific analytical context.
+#'
+#' @return A list of class \code{"cv.savvyPR"} containing the following components based on the specified \code{model_type}:
+#'   \item{call}{The matched call used to invoke the function.}
+#'   \item{coefficients}{The optimal coefficients results of the final fitted model.}
+#'   \item{mean_error_cv}{A vector of computed error values across all tested parameters.}
+#'   \item{model_type}{The type of PR model used: \code{PR1}, \code{PR2}, or \code{PR3}.}
+#'   \item{measure_type}{The loss measure used for evaluation, with a descriptive name.}
+#'   \item{method}{The parameterization method used: \code{"budget"} or \code{"target"}.}
+#'   \item{PR_fit}{The final fitted model object from the \code{savvyPR} function.}
+#'   \item{coefficients_cv}{A matrix of average coefficients across all cross-validation folds for each tuning parameter.}
+#'   \item{vals}{The tuning values (acting as c or t) used in the cross-validation process.}
+#'   \item{lambda_vals}{The \code{lambda} values used in the cross-validation process, applicable to \code{PR2} and \code{PR3}.}
+#'   \item{optimal_val}{The optimal tuning value found from cross-validation, applicable to \code{PR1} and \code{PR2}.}
+#'   \item{fixed_val}{The fixed tuning value used in \code{PR3}, derived from an initial PR1-style optimization.}
+#'   \item{optimal_lambda_val}{The optimal \code{lambda} value found in \code{PR3}.}
+#'   \item{fixed_lambda_val}{The fixed \code{lambda} value used in \code{PR2}, derived from \code{cv.glmnet}.}
+#'   \item{optimal_index}{A list detailing the indices of the optimal parameters within the cross-validation matrix.}
+#'   \item{fold_assignments}{(Optional) The fold assignments used during the cross-validation, provided if \code{foldid=TRUE}.}
+#'
+#' @examples
+#' \donttest{
+#' # Generate synthetic data
+#' set.seed(123)
+#' n <- 100 # Number of observations
+#' p <- 12  # Number of variables
+#' x <- matrix(rnorm(n * p), n, p)
+#' beta <- matrix(rnorm(p), p, 1)
+#' y <- x %*% beta + rnorm(n, sd = 0.5)
+#'
+#' # Example 1: PR1 with "budget" method (focusing on c values with MSE)
+#' result_pr1_budget <- cv.savvyPR(x, y, method = "budget", model_type = "PR1")
+#' print(result_pr1_budget)
+#'
+#' # Example 2: PR1 with "target" method
+#' result_pr1_target <- cv.savvyPR(x, y, method = "target", model_type = "PR1")
+#' print(result_pr1_target)
+#'
+#' # Example 3: PR3 (default model_type) exploring budget parameter
+#' result_pr3 <- cv.savvyPR(x, y, method = "budget", folds = 5)
+#' print(result_pr3)
+#' }
+#'
+#' @author Ziwei Chen, Vali Asimit and Pietro Millossovich\cr
+#' Maintainer: Ziwei Chen <ziwei.chen.3@citystgeorges.ac.uk>
+#'
+#' @references
+#' Asimit, V., Chen, Z., Ichim, B., & Millossovich, P. (2026).
+#' \emph{Prity Regression Estimation}.
+#' Retrieved from \url{https://openaccess.city.ac.uk/id/eprint/37017/}
+#'
+#' The optimization technique employed follows the algorithm described by:
+#' F. Spinu (2013). An Algorithm for Computing Risk Parity Weights. SSRN Preprint. doi:10.2139/ssrn.2297383
+#'
+#' @importFrom glmnet cv.glmnet
+#' @importFrom stats coef
+#'
+#' @seealso \code{\link{savvyPR}}, \code{\link[glmnet:glmnet]{glmnet}}, \code{\link[glmnet:cv.glmnet]{cv.glmnet}},
+#'          \code{calcLoss}, \code{getMeasureName}, \code{optimizeRiskParityBudget}, \code{optimizeRiskParityTarget}
+#'
+#' @export
+cv.savvyPR <- function(x, y, method = c("budget", "target"), vals = NULL, nval = 100,
+                       lambda_vals = NULL, nlambda = 100, folds = 10,
+                       model_type = c("PR3", "PR1", "PR2"), measure_type = c("mse", "mae", "rmse", "mape"),
+                       foldid = FALSE, use_feature_selection = FALSE, standardize = FALSE,
+                       intercept = TRUE, exclude = NULL) {
+
+  if (missing(method) || is.null(method)) {
+    method <- "budget"
+  } else {
+    method <- match.arg(method)
+  }
+
+  if (missing(model_type) || is.null(model_type)) {
+    model_type <- "PR3"
+  } else {
+    model_type <- match.arg(model_type)
+  }
+
+  if (missing(measure_type) || is.null(measure_type)) {
+    measure_type <- "mse"
+  } else {
+    measure_type <- match.arg(measure_type)
+  }
+
+  x <- as.matrix(x)
+  y <- as.vector(y)
+  nobs <- nrow(x)
+  nvars <- ncol(x)
+
+  if (nrow(x) != length(y)) {
+    stop("The number of rows in x must match the length of y.")
+  }
+
+  if (anyNA(x) || anyNA(y)) {
+    stop("x or y has missing values; consider using appropriate methods to impute them before analysis.")
+  }
+
+  if (is.null(vals)) {
+    if (method == "budget") {
+      vals <- c(0, seq(0.00001, 1/nvars, length.out = nval - 1))
+    } else if (method == "target") {
+      vals <- c(0, 10^seq(-6, 2, length.out = nval - 1))
+    }
+  } else if (length(vals) < 2) {
+    stop("Need more than one value of tuning parameter (vals) for meaningful cross-validation.")
+  }
+
+  if ((is.null(lambda_vals) && (model_type == "PR2" || model_type == "PR3"))) {
+    lambda_vals <- c(0, 10^seq(-6, 2, length.out = nlambda - 1))
+  } else if (length(lambda_vals) < 2 && (model_type == "PR2" || model_type == "PR3")) {
+    stop("Need more than one value of lambda_val for meaningful cross-validation.")
+  }
+
+  if (!is.numeric(folds) || folds < 3 || round(folds) != folds) {
+    stop("Number of folds must be an integer greater than or equal to 3.")
+  }
+
+  fold_ids <- sample(rep(1:folds, length.out = nobs))
+
+  measure_name <- getMeasureName(measure_type)
+
+  cv_fold_process <- function(val, lambda_val, folds, fold_ids, intercept) {
+    mse_k <- numeric(folds)
+    coefs <- matrix(0, nvars + as.integer(intercept), folds)
+    for (fold in 1:folds) {
+      test_idx <- (fold_ids == fold)
+      train_idx <- !test_idx
+      x_train <- x[train_idx, , drop = FALSE]
+      y_train <- y[train_idx]
+      x_test <- x[test_idx, , drop = FALSE]
+      y_test <- y[test_idx]
+
+      fit <- savvyPR(x_train, y_train, method = method, val = val,
+                     lambda_val = lambda_val, use_feature_selection = FALSE,
+                     standardize = standardize, intercept = intercept)
+      mse_k[fold] <- calcLoss(x_test, y_test, fit$coefficients, measure_type, intercept)
+      coefs[, fold] <- fit$coefficients
+    }
+    list(mean_error = mean(mse_k), coefficients = rowMeans(coefs))
+  }
+
+  if (model_type == "PR1" || model_type == "PR3") {
+    results <- lapply(vals, function(v) {
+      cv_fold_process(val = v, lambda_val = 0, folds, fold_ids, intercept)
+    })
+
+    mean_error_cv <- sapply(results, function(res) res$mean_error)
+    coefficients_cv <- sapply(results, function(res) res$coefficients)
+    val_optimal_index <- which.min(mean_error_cv)
+    optimal_val <- vals[val_optimal_index]
+
+    # Final model fit: Always use lambda = 0 (OLS) for PR1 and PR3
+    optimal_fit <- savvyPR(x, y, method = method, val = optimal_val, lambda_val = 0,
+                           use_feature_selection = FALSE, standardize = standardize,
+                           intercept = intercept)
+  }
+
+  if (model_type == "PR2") {
+    cv_fit <- cv.glmnet(x, y, alpha = 0, lambda = lambda_vals, intercept = intercept)
+    lambda_optimal_index <- length(lambda_vals) - cv_fit$index[1] + 1
+    lambda_fixed <- cv_fit$lambda.min
+
+    results <- lapply(vals, function(v) {
+      cv_fold_process(val = v, lambda_val = lambda_fixed, folds, fold_ids, intercept)
+    })
+    mean_error_cv <- sapply(results, function(res) res$mean_error)
+    coefficients_cv <- sapply(results, function(res) res$coefficients)
+    val_optimal_index <- which.min(mean_error_cv)
+    optimal_val <- vals[val_optimal_index]
+
+    optimal_fit <- savvyPR(x, y, method = method, val = optimal_val,
+                           lambda_val = lambda_fixed, use_feature_selection = FALSE,
+                           standardize = standardize, intercept = intercept)
+  }
+
+  if (model_type == "PR3") {
+    results <- lapply(lambda_vals, function(l_val) {
+      cv_fold_process(val = optimal_val, lambda_val = l_val, folds, fold_ids, intercept)
+    })
+    mean_error_cv <- sapply(results, function(res) res$mean_error)
+    coefficients_cv <- sapply(results, function(res) res$coefficients)
+    lambda_optimal_index <- which.min(mean_error_cv)
+    optimal_lambda <- lambda_vals[lambda_optimal_index]
+
+    optimal_fit <- savvyPR(x, y, method = method, val = optimal_val,
+                           lambda_val = optimal_lambda, use_feature_selection = FALSE,
+                           standardize = standardize, intercept = intercept)
+  }
+
+  results_list <- list(
+    call = match.call(),
+    coefficients = optimal_fit$coefficients,
+    mean_error_cv = as.vector(mean_error_cv),
+    model_type = model_type,
+    measure_type = measure_name,
+    method = method,
+    PR_fit = optimal_fit,
+    coefficients_cv = coefficients_cv,
+    vals = vals
+  )
+
+  if (model_type == "PR1") {
+    results_list$optimal_val = optimal_val
+    results_list$fixed_lambda_val = 0
+    results_list$optimal_index = list("min_val" = val_optimal_index)
+  } else if (model_type == "PR2") {
+    results_list$lambda_vals = lambda_vals
+    results_list$optimal_val = optimal_val
+    results_list$fixed_lambda_val = lambda_fixed
+    results_list$optimal_index = list("min_val" = val_optimal_index, "min_lambda" = lambda_optimal_index)
+  } else if (model_type == "PR3") {
+    results_list$lambda_vals = lambda_vals
+    results_list$fixed_val = optimal_val
+    results_list$optimal_lambda_val = optimal_lambda
+    results_list$optimal_index = list("min_val" = val_optimal_index, "min_lambda" = lambda_optimal_index)
+  }
+
+  if (foldid) {
+    results_list$fold_assignments = fold_ids
+  }
+
+  class(results_list) <- "cv.savvyPR"
+
+  return(results_list)
+}
+

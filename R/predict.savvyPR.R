@@ -1,0 +1,54 @@
+#' Predict for Parity Regression Models
+#'
+#' @title Predict for Parity Regression Models
+#' @description Predicts fitted values or extracts estimated coefficients from a fitted
+#' parity regression model object. It handles models optimized
+#' using either the \code{"budget"} or \code{"target"} parameterization method seamlessly.
+#'
+#' @param object A fitted model object of class \code{"savvyPR"} returned by \code{\link{savvyPR}}.
+#' @param newx Matrix of new data for which predictions are to be made. Must have the same number of columns as the training data.
+#'             This argument is required if \code{type = "response"}.
+#' @param type Type of prediction required. Can be \code{"response"} (fitted values) or \code{"coefficients"}.
+#'             Defaults to \code{"response"}.
+#' @param ... Additional arguments (currently unused in this function).
+#'
+#' @details
+#' This function is an S3 method for the generic \code{predict} function. It utilizes the
+#' parameters estimated during the fitting procedure. For \code{type = "response"}, it computes
+#' predictions based on the provided \code{newx} matrix. For \code{type = "coefficients"}, it extracts
+#' the estimated coefficients. The underlying computation is delegated to an internal helper function
+#' to ensure consistency across the package.
+#'
+#' @return Depending on the \code{type} argument, this function returns:
+#' \itemize{
+#'   \item \strong{\code{"response"}}: A numeric vector of predicted values corresponding to the rows of \code{newx}.
+#'   \item \strong{\code{"coefficients"}}: A named numeric vector of the estimated coefficients. If the model was fitted with an intercept, it will be included as the first element.
+#' }
+#'
+#' @examples
+#' # Generate synthetic data
+#' set.seed(123)
+#' x <- matrix(rnorm(100 * 20), 100, 20)
+#' y <- rnorm(100)
+#'
+#' # Example 1: Predict using a Budget-based model
+#' fit_budget <- savvyPR(x, y, method = "budget", val = 0.05)
+#' predict(fit_budget, newx = x[1:5, ], type = "response")
+#'
+#' # Example 2: Predict using a Target-based model
+#' fit_target <- savvyPR(x, y, method = "target", val = 1)
+#' predict(fit_target, newx = x[1:5, ], type = "response")
+#'
+#' # Extract coefficients
+#' predict(fit_budget, type = "coefficients")
+#'
+#' @author Ziwei Chen, Vali Asimit and Pietro Millossovich\cr
+#' Maintainer: Ziwei Chen <ziwei.chen.3@citystgeorges.ac.uk>
+#'
+#' @seealso \code{\link{savvyPR}}
+#' @method predict savvyPR
+#' @export
+predict.savvyPR <- function(object, newx = NULL, type = c("response", "coefficients"), ...) {
+  predictParity(object$coefficients, newx, intercept = object$intercept, type = type)
+}
+

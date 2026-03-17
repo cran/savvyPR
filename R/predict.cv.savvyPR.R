@@ -1,0 +1,56 @@
+#' Predict for Cross-Validated Parity Regression Models
+#'
+#' @title Predict for Cross-Validated Parity Regression Models
+#' @description Predicts fitted values or extracts estimated coefficients from a fitted
+#' cross-validated parity regression model object. It handles models optimized
+#' using either the \code{"budget"} or \code{"target"} parameterization method seamlessly.
+#'
+#' @param object A fitted model object of class \code{"cv.savvyPR"} returned by \code{\link{cv.savvyPR}}.
+#' @param newx Matrix of new data for which predictions are to be made. Must have the same number of columns as the training data.
+#'             This argument is required if \code{type = "response"}.
+#' @param type Type of prediction required. Can be \code{"response"} (fitted values) or \code{"coefficients"}.
+#'             Defaults to \code{"response"}.
+#' @param ... Additional arguments (currently unused in this function).
+#'
+#' @details
+#' This function is an S3 method for the generic \code{predict} function. It utilizes the optimal
+#' model identified during the cross-validation procedure. For \code{type = "response"}, it computes
+#' predictions based on the provided \code{newx} matrix. For \code{type = "coefficients"}, it extracts
+#' the optimal coefficients. The underlying computation is delegated to an internal helper function
+#' to ensure consistency across the package.
+#'
+#' @return Depending on the \code{type} argument, this function returns:
+#' \itemize{
+#'   \item \strong{\code{"response"}}: A numeric vector of predicted values corresponding to the rows of \code{newx}.
+#'   \item \strong{\code{"coefficients"}}: A named numeric vector of the estimated optimal coefficients. If the model was fitted with an intercept, it will be included as the first element.
+#' }
+#'
+#' @examples
+#' \donttest{
+#' # Generate synthetic data
+#' set.seed(123)
+#' x <- matrix(rnorm(100 * 20), 100, 20)
+#' y <- rnorm(100)
+#'
+#' # Example 1: Predict using a cross-validated Budget-based model
+#' cv_fit_budget <- cv.savvyPR(x, y, method = "budget", model_type = "PR3")
+#' predict(cv_fit_budget, newx = x[1:5, ], type = "response")
+#'
+#' # Example 2: Predict using a cross-validated Target-based model
+#' cv_fit_target <- cv.savvyPR(x, y, method = "target", model_type = "PR1")
+#' predict(cv_fit_target, newx = x[1:5, ], type = "response")
+#'
+#' # Extract optimal coefficients
+#' predict(cv_fit_budget, type = "coefficients")
+#' }
+#'
+#' @author Ziwei Chen, Vali Asimit and Pietro Millossovich\cr
+#' Maintainer: Ziwei Chen <ziwei.chen.3@citystgeorges.ac.uk>
+#'
+#' @seealso \code{\link{cv.savvyPR}}
+#' @method predict cv.savvyPR
+#' @export
+predict.cv.savvyPR <- function(object, newx = NULL, type = c("response", "coefficients"), ...) {
+  predictParity(object$coefficients, newx, intercept = object$PR_fit$intercept, type = type)
+}
+
