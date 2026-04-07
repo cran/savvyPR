@@ -1,7 +1,7 @@
 Package: savvyPR
 Type: Package
 Title: Savvy Parity Regression Model Estimation with 'savvyPR'
-Version: 0.1.0
+Version: 0.1.1
 Authors@R: 
     c(person(given = "Ziwei", family = "Chen", role = c("aut", "cre"),
              email = "Ziwei.Chen.3@citystgeorges.ac.uk",
@@ -24,7 +24,7 @@ Description: Implements the Savvy Parity Regression 'savvyPR' methodology
     analysis, and parameter tuning via cross-validation (PR1, PR2, and
     PR3 model types) to optimize predictive accuracy. Methods are based
     on Asimit, Chen, Ichim and Millossovich (2026)
-    <https://openaccess.city.ac.uk/id/eprint/35005/>.
+    <https://openaccess.city.ac.uk/id/eprint/37017/>.
 License: GPL (>= 3)
 URL: https://ziwei-chenchen.github.io/savvyPR/
 BugReports: https://github.com/ziwei-chenchen/savvyPR/issues
@@ -36,11 +36,11 @@ Suggests: MASS, knitr, rmarkdown, testthat (>= 3.0.0), covr
 VignetteBuilder: knitr
 Config/testthat/edition: 3
 NeedsCompilation: no
-Packaged: 2026-03-12 17:25:43 UTC; lanceyun
+Packaged: 2026-04-07 15:31:21 UTC; lanceyun
 Author: Ziwei Chen [aut, cre] (ORCID: <https://orcid.org/0009-0009-6376-3850>),
   Vali Asimit [aut] (ORCID: <https://orcid.org/0000-0002-7706-0066>),
   Pietro Millossovich [aut] (ORCID:
     <https://orcid.org/0000-0001-8269-7507>)
 Maintainer: Ziwei Chen <Ziwei.Chen.3@citystgeorges.ac.uk>
 Repository: CRAN
-Date/Publication: 2026-03-17 19:10:08 UTC
+Date/Publication: 2026-04-07 16:20:02 UTC
